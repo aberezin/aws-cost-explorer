@@ -1,21 +1,28 @@
 #!/usr/bin/env python
-import datetime
 import os
 import re
+from datetime import datetime
 from typing import List
 
 import boto3
 import typer
 from botocore.exceptions import ClientError
 from dateutil.relativedelta import relativedelta
+from typing_extensions import Annotated
 from typing_extensions import Optional
+
+import localutils.date_utils as du
+from localutils.aws_response import AwsCostExplorerResponse
+from localutils.json_utils import json_from_py
 
 # See /Users/aberezin/fti/fti-virtual-file-system/projects/cp-railway-integration.rev/phase2/repo-github/cpkc/transit_time/code/utils/awsutils.py
 # for attempt at a wrapper for aws. Also need to figure out what im going to do about a cli utils module. and
 # specifically how to easily add to it while im in another project
 
-app = typer.Typer(help="A program to inspect an aws bucket for objects that look like glue table metadata and"
-                       " turn them into json files in a tmp dir under the working dir.")
+app = typer.Typer(help="""A program to inspect an aws bucket for objects that look like glue table metadata and"
+                       " turn them into json files in a tmp dir under the working dir.
+                      TODO currently hardwired for last 7 days 
+                       """)
 
 
 # One would need to do an `aws sso login --profile CPR-D-AWS-DevSTB-Developer` at powershell or cmd.exe
@@ -47,16 +54,23 @@ def validate_credentials(session: boto3.Session):
         exit(1)
 
 
+
 # Define a custom function to serialize datetime objects
 def serialize_datetime(obj):
-    if isinstance(obj, datetime.datetime):
+    if isinstance(obj, datetime):
         return obj.isoformat()
     raise TypeError("Type not serializable")
 
 
 @app.command()
-def export(profile_name: Optional[str] = default_profile, verbose: Optional[int] = 0,
-           start_date: Optional[str] = default_bucket, end_date: Optional[str] = None):
+def export(profile_name: Optional[str] = default_profile,
+           verbose: Annotated[Optional[int], typer.Argument()] = 0,
+           start_date: Annotated[Optional[str], typer.Argument()] = None,
+           end_date: Annotated[Optional[str], typer.Argument()] = None,
+           as_json: Annotated[Optional[bool], typer.Option()] = True,
+           as_csv: Annotated[Optional[bool], typer.Option()] = False,
+           as_local_time: Annotated[Optional[bool], typer.Option()] = False
+           ):
     global verbosity
     verbosity = verbose
     if os.system('mkdir -p tmp') > 0:
@@ -64,16 +78,32 @@ def export(profile_name: Optional[str] = default_profile, verbose: Optional[int]
         exit(1)
     debug_print(f"using profile name: {profile_name}")
 
-    # Define timeframe
-    today: datetime.datetime = datetime.datetime.utcnow()
-    start_date: datetime.datetime = today - relativedelta(days=7)
-    end_date: datetime.datetime = today
+    # TODO for now just hardwire last 7 days
+    today: datetime = du.date_round_seconds(du.now())
+    start_date: datetime = today - relativedelta(days=7)
+    end_date: datetime = today
 
     session: boto3.Session = boto3.Session(profile_name=profile_name)
     validate_credentials(session)
-    hourly_data = get_hourly_cost_data(session, start_date, end_date)
-    for hour in hourly_data:
-        print(f"Time: {hour['TimePeriod']['Start']} - Cost: {hour['Total']['Amount']}")
+    res = get_hourly_cost_data(session, start_date, end_date)
+
+    def tz_adjust(dt: datetime) -> datetime:
+        if not as_local_time:
+            return dt
+        return dt.astimezone() # local timezone
+
+    if as_csv:
+        print(r'"start","end,"cost"')
+        for hour in res.get_result_list():
+            start =  datetime.isoformat( tz_adjust(hour.start_date))
+            end = datetime.isoformat(tz_adjust(hour.end_date))
+            print(fr'"{start}","{end}","{hour.cost}"')
+    else:
+        if as_local_time:
+            print('--as-local-time not implemented for json output yet')
+            exit(1)
+        json_str = json_from_py(res.result_by_time)
+        print(json_str)
 
     exit(0)
     # junk below
@@ -101,11 +131,12 @@ def export(profile_name: Optional[str] = default_profile, verbose: Optional[int]
     exit(0)
 
 
-def get_hourly_cost_data(session: boto3.Session, start_date: datetime.datetime, end_date: datetime.datetime):
+def get_hourly_cost_data(session: boto3.Session, start_date: datetime, end_date: datetime) -> AwsCostExplorerResponse:
     """
     Retrieves hourly cost data from AWS Cost Explorer API.
 
     Args:
+      session:
       start_date (datetime): Start date of the billing period.
       end_date (datetime): End date of the billing period.
 
@@ -113,11 +144,16 @@ def get_hourly_cost_data(session: boto3.Session, start_date: datetime.datetime, 
       list: List of dictionaries containing hourly cost data.
     """
     client = session.client("ce")
-    cost_data = client.get_cost_and_usage(
-        TimePeriod={"Start": start_date.isoformat(), "End": end_date.isoformat()},
+    res: dict = client.get_cost_and_usage(
+        TimePeriod={"Start": aws_date_format(start_date), "End": aws_date_format(end_date)},
         Granularity="HOURLY", Metrics=["BlendedCost"]
     )
-    return cost_data
+    return AwsCostExplorerResponse(res)
+
+
+# TODO move to AWSUtils
+def aws_date_format(dt: datetime) -> str:
+    return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 if __name__ == "__main__":

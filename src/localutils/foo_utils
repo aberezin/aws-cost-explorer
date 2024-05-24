@@ -1,4 +1,0 @@
-#Put local stuff here. Mark stuff that you want merged to other places
-
-def getfoo():
-  return "foo"
