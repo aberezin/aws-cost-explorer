@@ -11,9 +11,9 @@ from dateutil.relativedelta import relativedelta
 from typing_extensions import Annotated
 from typing_extensions import Optional
 
-import localutils.date_utils as du
-from localutils.aws_response import AwsCostExplorerResponse
-from localutils.json_utils import json_from_py
+import aws_cost_explorer.localutils.date_utils as du
+from aws_cost_explorer.localutils.aws_response import AwsCostExplorerResponse
+from aws_cost_explorer.localutils.json_utils import json_from_py
 
 # See /Users/aberezin/fti/fti-virtual-file-system/projects/cp-railway-integration.rev/phase2/repo-github/cpkc/transit_time/code/utils/awsutils.py
 # for attempt at a wrapper for aws. Also need to figure out what im going to do about a cli utils module. and

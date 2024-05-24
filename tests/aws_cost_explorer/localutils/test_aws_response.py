@@ -1,7 +1,7 @@
 import unittest
 from datetime import datetime, timezone
 
-from src.localutils.aws_response import AwsCostExplorerResponse
+from src.aws_cost_explorer.localutils.aws_response import AwsCostExplorerResponse
 
 
 class MyTestCase(unittest.TestCase):

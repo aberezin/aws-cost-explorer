@@ -1,7 +1,7 @@
 import unittest
 from datetime import datetime, timezone
 
-import src.localutils.json_utils as ju
+import src.aws_cost_explorer.localutils.json_utils as ju
 
 
 class MyTestCase(unittest.TestCase):

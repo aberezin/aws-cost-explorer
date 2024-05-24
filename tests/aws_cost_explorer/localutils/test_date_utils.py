@@ -1,6 +1,6 @@
 import unittest
 from datetime import datetime, timedelta
-import src.localutils.date_utils as du
+import src.aws_cost_explorer.localutils.date_utils as du
 
 
 #TODO move to general date utils class
